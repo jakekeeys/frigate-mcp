@@ -21,6 +21,16 @@ class Settings(BaseSettings):
         alias="FRIGATE_TIMEOUT",
         description="HTTP request timeout in seconds",
     )
+    host: str = Field(
+        default="0.0.0.0",
+        alias="MCP_HOST",
+        description="Host to bind the HTTP server to",
+    )
+    port: int = Field(
+        default=8099,
+        alias="MCP_PORT",
+        description="Port to bind the HTTP server to",
+    )
 
     model_config = {
         "env_file": ".env",

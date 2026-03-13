@@ -31,6 +31,7 @@ dependencies = [
 
 [project.scripts]
 frigate-mcp = "frigate_mcp.__main__:main"
+frigate-mcp-web = "frigate_mcp.__main__:main_web"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

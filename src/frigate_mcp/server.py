@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from fastmcp import FastMCP
 
@@ -34,44 +33,40 @@ Use get_events with label/camera/zone filters for structured queries.
 """
 
 
-class FrigateMCPServer:
-    """Frigate MCP Server wrapping the Frigate HTTP API."""
+def create_server() -> tuple[FastMCP, FrigateClient]:
+    """Create and return a configured (FastMCP, FrigateClient) pair.
 
-    def __init__(self) -> None:
-        settings = get_settings()
-        self.mcp = FastMCP(
-            name="frigate-mcp",
-            version=__version__,
-            instructions=SERVER_INSTRUCTIONS,
-        )
-        self._client: FrigateClient | None = None
-        self._register_tools()
-        logger.info("Frigate MCP server initialised (target: %s)", settings.frigate_url)
+    The caller is responsible for closing the client when done.
+    """
+    settings = get_settings()
 
-    @property
-    def client(self) -> FrigateClient:
-        if self._client is None:
-            self._client = FrigateClient()
-        return self._client
+    mcp = FastMCP(
+        name="frigate-mcp",
+        version=__version__,
+        instructions=SERVER_INSTRUCTIONS,
+    )
+    client = FrigateClient()
 
-    def _register_tools(self) -> None:
-        """Register all tool modules."""
-        from frigate_mcp.tools.tools_system import register_system_tools
-        from frigate_mcp.tools.tools_events import register_event_tools
-        from frigate_mcp.tools.tools_cameras import register_camera_tools
-        from frigate_mcp.tools.tools_recordings import register_recording_tools
-        from frigate_mcp.tools.tools_review import register_review_tools
-        from frigate_mcp.tools.tools_exports import register_export_tools
-        from frigate_mcp.tools.tools_notifications import register_notification_tools
-        from frigate_mcp.tools.tools_labels import register_label_tools
-        from frigate_mcp.tools.tools_classification import register_classification_tools
+    # Register all tool modules
+    from frigate_mcp.tools.tools_system import register_system_tools
+    from frigate_mcp.tools.tools_events import register_event_tools
+    from frigate_mcp.tools.tools_cameras import register_camera_tools
+    from frigate_mcp.tools.tools_recordings import register_recording_tools
+    from frigate_mcp.tools.tools_review import register_review_tools
+    from frigate_mcp.tools.tools_exports import register_export_tools
+    from frigate_mcp.tools.tools_notifications import register_notification_tools
+    from frigate_mcp.tools.tools_labels import register_label_tools
+    from frigate_mcp.tools.tools_classification import register_classification_tools
 
-        register_system_tools(self.mcp, self.client)
-        register_event_tools(self.mcp, self.client)
-        register_camera_tools(self.mcp, self.client)
-        register_recording_tools(self.mcp, self.client)
-        register_review_tools(self.mcp, self.client)
-        register_export_tools(self.mcp, self.client)
-        register_notification_tools(self.mcp, self.client)
-        register_label_tools(self.mcp, self.client)
-        register_classification_tools(self.mcp, self.client)
+    register_system_tools(mcp, client)
+    register_event_tools(mcp, client)
+    register_camera_tools(mcp, client)
+    register_recording_tools(mcp, client)
+    register_review_tools(mcp, client)
+    register_export_tools(mcp, client)
+    register_notification_tools(mcp, client)
+    register_label_tools(mcp, client)
+    register_classification_tools(mcp, client)
+
+    logger.info("Frigate MCP server initialised (target: %s)", settings.frigate_url)
+    return mcp, client

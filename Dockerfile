@@ -7,4 +7,4 @@ COPY src/ src/
 
 RUN pip install --no-cache-dir .
 
-ENTRYPOINT ["frigate-mcp"]
+ENTRYPOINT ["frigate-mcp-web"]
