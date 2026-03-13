@@ -1,0 +1,9 @@
+services:
+  frigate-mcp:
+    image: ghcr.io/jakekeeys/frigate-mcp:latest
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8099:8099"
+    restart: unless-stopped
