@@ -5,5 +5,5 @@ services:
     env_file:
       - .env
     ports:
-      - "8099:8099"
+      - "8086:8086"
     restart: unless-stopped

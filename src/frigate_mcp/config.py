@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         description="Host to bind the HTTP server to",
     )
     port: int = Field(
-        default=8099,
+        default=8086,
         alias="MCP_PORT",
         description="Port to bind the HTTP server to",
     )
