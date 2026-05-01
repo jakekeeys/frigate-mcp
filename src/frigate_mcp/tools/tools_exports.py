@@ -29,14 +29,18 @@ def register_export_tools(mcp: Any, client: Any) -> None:
         camera: Annotated[str, Field(description="Camera name")],
         start: Annotated[float, Field(description="Start Unix timestamp")],
         end: Annotated[float, Field(description="End Unix timestamp")],
-        name: Annotated[str | None, Field(default=None, description="Optional name for the export")] = None,
+        name: Annotated[str | None, Field(default=None, description="Optional friendly name for the export")] = None,
+        playback: Annotated[str | None, Field(default=None, description="Playback factor: 'realtime' (default), 'timelapse_25x', etc.")] = None,
+        source: Annotated[str | None, Field(default=None, description="Source: 'recordings' (default) or 'preview'")] = None,
     ) -> dict[str, Any]:
         """Create a new video export from recorded footage.
 
         Exports a section of recorded video between the start and end
         timestamps for the specified camera.
         """
-        result = await client.create_export(camera, start, end, name=name)
+        result = await client.create_export(
+            camera, start, end, name=name, playback=playback, source=source
+        )
         return {"success": True, "result": result}
 
     @mcp.tool()

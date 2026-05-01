@@ -21,11 +21,10 @@ object detection for IP cameras.  You can use the tools provided to:
 - Query system status, configuration and statistics
 - Search and browse detected events (people, cars, animals, etc.)
 - View camera snapshots and event thumbnails
-- Manage the review queue (mark items as reviewed)
+- Manage the review queue (mark items as reviewed) and ask GenAI to summarise it
 - Manage video exports
-- Control PTZ cameras
-- Manage recognised faces and license plates
-- View recordings and motion activity
+- Manage registered faces and view recognised license plates
+- View recordings, gaps, and motion activity
 
 Always prefer searching events by semantic description when the user asks
 about what happened ("was there a delivery?", "did anyone come to the door?").
@@ -48,15 +47,14 @@ def create_server() -> tuple[FastMCP, FrigateClient]:
     client = FrigateClient()
 
     # Register all tool modules
-    from frigate_mcp.tools.tools_system import register_system_tools
-    from frigate_mcp.tools.tools_events import register_event_tools
     from frigate_mcp.tools.tools_cameras import register_camera_tools
+    from frigate_mcp.tools.tools_classification import register_classification_tools
+    from frigate_mcp.tools.tools_events import register_event_tools
+    from frigate_mcp.tools.tools_exports import register_export_tools
+    from frigate_mcp.tools.tools_labels import register_label_tools
     from frigate_mcp.tools.tools_recordings import register_recording_tools
     from frigate_mcp.tools.tools_review import register_review_tools
-    from frigate_mcp.tools.tools_exports import register_export_tools
-    from frigate_mcp.tools.tools_notifications import register_notification_tools
-    from frigate_mcp.tools.tools_labels import register_label_tools
-    from frigate_mcp.tools.tools_classification import register_classification_tools
+    from frigate_mcp.tools.tools_system import register_system_tools
 
     register_system_tools(mcp, client)
     register_event_tools(mcp, client)
@@ -64,7 +62,6 @@ def create_server() -> tuple[FastMCP, FrigateClient]:
     register_recording_tools(mcp, client)
     register_review_tools(mcp, client)
     register_export_tools(mcp, client)
-    register_notification_tools(mcp, client)
     register_label_tools(mcp, client)
     register_classification_tools(mcp, client)
 

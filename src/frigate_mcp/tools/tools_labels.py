@@ -23,9 +23,11 @@ def register_label_tools(mcp: Any, client: Any) -> None:
         return {"success": True, "labels": labels}
 
     @mcp.tool()
-    async def get_sub_labels() -> dict[str, Any]:
-        """Get all sub-labels (e.g. identified person names, license plates)."""
-        sub_labels = await client.get_sub_labels()
+    async def get_sub_labels(
+        split_joined: Annotated[int | None, Field(default=None, description="If 1, split joined sub-labels (e.g. 'Alice,Bob') into separate entries")] = None,
+    ) -> dict[str, Any]:
+        """Get all sub-labels (e.g. identified person names)."""
+        sub_labels = await client.get_sub_labels(split_joined=split_joined)
         return {"success": True, "sub_labels": sub_labels}
 
     @mcp.tool()
@@ -43,3 +45,21 @@ def register_label_tools(mcp: Any, client: Any) -> None:
             camera=camera, source_id=source_id, limit=limit
         )
         return {"success": True, "count": len(timeline), "timeline": timeline}
+
+    @mcp.tool()
+    async def get_timeline_hourly(
+        cameras: Annotated[str | None, Field(default=None, description="Comma-separated camera names (or 'all')")] = None,
+        labels: Annotated[str | None, Field(default=None, description="Comma-separated labels (or 'all')")] = None,
+        before: Annotated[float | None, Field(default=None, description="End Unix timestamp")] = None,
+        after: Annotated[float | None, Field(default=None, description="Start Unix timestamp")] = None,
+        timezone: Annotated[str | None, Field(default=None, description="IANA timezone")] = None,
+    ) -> dict[str, Any]:
+        """Get hourly bucketed timeline summary."""
+        result = await client.get_timeline_hourly(
+            cameras=cameras,
+            labels=labels,
+            before=before,
+            after=after,
+            timezone=timezone,
+        )
+        return {"success": True, "timeline": result}

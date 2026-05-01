@@ -6,19 +6,20 @@ Control and query your Frigate NVR instance through AI assistants like Claude De
 
 ## Features
 
-**45 tools** across 9 categories:
+**59 tools** across 8 categories, mapped 1:1 to Frigate's v0.17.x HTTP API:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| **System** | 5 | Config, stats, version, logs, restart |
-| **Events** | 12 | List, get, search, create, delete, retain, sub-label, describe, false-positive |
-| **Cameras** | 3 | Latest frame, PTZ info, PTZ commands |
-| **Recordings** | 2 | Recording summary, storage usage |
-| **Review** | 5 | Queue, summary, mark reviewed, delete, motion activity |
+| **System** | 9 | Version, stats (+history), config (get/save/schema), logs, restart, Frigate+ models |
+| **Events** | 16 | List, explore, by-id, search, summary, create/end/delete, retain, false-positive, sub-label, recognized plate, attributes, description, regenerate description |
+| **Cameras** | 2 | Latest frame, latest "best" thumbnail per camera + label |
+| **Recordings** | 4 | Summary, storage, list segments, recording gaps |
+| **Review** | 11 | List, by-id, by-event, by-ids, summary, mark/unmark viewed, delete, motion activity, AI summary |
 | **Exports** | 5 | List, get, create, delete, rename |
-| **Notifications** | 2 | List, mark read |
-| **Labels** | 3 | Labels, sub-labels, timeline |
-| **Classification** | 8 | Faces CRUD, license plates CRUD, thumbnails, snapshots |
+| **Labels** | 4 | Labels, sub-labels, timeline, hourly timeline |
+| **Classification** | 8 | Faces CRUD (folder/delete/rename/reprocess/list), recognized plates, LPR reprocess, event thumbnail/snapshot |
+
+PTZ camera control is **not** included — Frigate exposes PTZ over MQTT, not HTTP.
 
 ## Quick Start
 
@@ -122,7 +123,7 @@ Once connected, you can ask your AI assistant things like:
 - *"Mark all review items from today as reviewed"*
 - *"Create an export of the backyard camera from 2pm to 3pm"*
 - *"What faces has Frigate learned?"*
-- *"Register license plate ABC-1234 as 'Mom'"*
+- *"Summarise everything that happened in the review queue overnight"*
 - *"Show me the system stats"*
 
 ## Configuration
@@ -144,14 +145,13 @@ src/frigate_mcp/
         rest_client.py   # Async httpx client for Frigate API
     tools/
         tools_system.py         # System/config tools
-        tools_events.py         # Event CRUD + search
-        tools_cameras.py        # Camera frames + PTZ
-        tools_recordings.py     # Recording info
-        tools_review.py         # Review queue
+        tools_events.py         # Event CRUD, search, attributes, description
+        tools_cameras.py        # Camera frames + best-per-label thumbnails
+        tools_recordings.py     # Recording summary, segments, gaps
+        tools_review.py         # Review queue + GenAI summary
         tools_exports.py        # Video exports
-        tools_notifications.py  # Notifications
-        tools_labels.py         # Labels + timeline
-        tools_classification.py # Faces + license plates + media
+        tools_labels.py         # Labels, sub-labels, timeline
+        tools_classification.py # Faces + recognised plates + event media
 ```
 
 ## License

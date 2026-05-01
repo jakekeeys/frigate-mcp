@@ -58,6 +58,24 @@ def register_event_tools(mcp: Any, client: Any) -> None:
         return {"success": True, "event": event}
 
     @mcp.tool()
+    async def get_events_by_ids(
+        event_ids: Annotated[list[str], Field(description="List of event IDs to fetch in one call")],
+    ) -> dict[str, Any]:
+        """Bulk fetch events by ID."""
+        events = await client.get_events_by_ids(event_ids)
+        return {"success": True, "count": len(events), "events": events}
+
+    @mcp.tool()
+    async def explore_events() -> dict[str, Any]:
+        """Get a high-level summary of recent events grouped by label.
+
+        Returns the most recent items per label across all cameras —
+        useful as a default "what's been happening?" view.
+        """
+        events = await client.explore_events()
+        return {"success": True, "count": len(events), "events": events}
+
+    @mcp.tool()
     async def search_events(
         query: Annotated[str, Field(description="Natural language search query (e.g. 'person at front door', 'red car')")],
         cameras: Annotated[str | None, Field(default=None, description="Comma-separated camera names to search")] = None,
@@ -120,9 +138,33 @@ def register_event_tools(mcp: Any, client: Any) -> None:
     async def set_event_sub_label(
         event_id: Annotated[str, Field(description="Event ID")],
         sub_label: Annotated[str, Field(description="Sub-label to set (e.g. person's name)")],
+        sub_label_score: Annotated[float | None, Field(default=None, description="Confidence score for the sub-label (0-1)")] = None,
     ) -> dict[str, Any]:
         """Set a sub-label on an event (e.g. to identify a specific person)."""
-        result = await client.set_sub_label(event_id, sub_label)
+        result = await client.set_sub_label(
+            event_id, sub_label, sub_label_score=sub_label_score
+        )
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def set_event_recognized_license_plate(
+        event_id: Annotated[str, Field(description="Event ID")],
+        plate: Annotated[str, Field(description="Recognized plate text (empty string clears it)")],
+        plate_score: Annotated[float | None, Field(default=None, description="Confidence score (0-1)")] = None,
+    ) -> dict[str, Any]:
+        """Manually set/correct the recognized license plate on an event."""
+        result = await client.set_recognized_license_plate(
+            event_id, plate, plate_score=plate_score
+        )
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def set_event_attributes(
+        event_id: Annotated[str, Field(description="Event ID")],
+        attributes: Annotated[list[str], Field(description="List of custom classification attribute names to apply")],
+    ) -> dict[str, Any]:
+        """Set custom classification attributes on an event."""
+        result = await client.set_event_attributes(event_id, attributes)
         return {"success": True, "result": result}
 
     @mcp.tool()
@@ -135,12 +177,25 @@ def register_event_tools(mcp: Any, client: Any) -> None:
         return {"success": True, "result": result}
 
     @mcp.tool()
+    async def regenerate_event_description(
+        event_id: Annotated[str, Field(description="Event ID")],
+        source: Annotated[str | None, Field(default=None, description="GenAI source (e.g. 'thumbnails' or 'snapshot')")] = None,
+        force: Annotated[bool | None, Field(default=None, description="Force regeneration even if GenAI is disabled")] = None,
+    ) -> dict[str, Any]:
+        """Ask Frigate's GenAI provider to regenerate the event description."""
+        result = await client.regenerate_description(
+            event_id, source=source, force=force
+        )
+        return {"success": True, "result": result}
+
+    @mcp.tool()
     async def create_event(
         camera: Annotated[str, Field(description="Camera name to create the event on")],
         label: Annotated[str, Field(description="Object label for the event")],
         sub_label: Annotated[str | None, Field(default=None, description="Optional sub-label")] = None,
-        duration: Annotated[int | None, Field(default=None, description="Event duration in seconds")] = None,
-        include_recording: Annotated[bool | None, Field(default=None, description="Include recording clip")] = None,
+        score: Annotated[float | None, Field(default=None, description="Detection score (0-1)")] = None,
+        duration: Annotated[int | None, Field(default=None, description="Event duration in seconds (default 30)")] = None,
+        include_recording: Annotated[bool | None, Field(default=None, description="Include recording clip (default true)")] = None,
     ) -> dict[str, Any]:
         """Manually create an event on a camera.
 
@@ -151,6 +206,7 @@ def register_event_tools(mcp: Any, client: Any) -> None:
             camera,
             label,
             sub_label=sub_label,
+            score=score,
             duration=duration,
             include_recording=include_recording,
         )

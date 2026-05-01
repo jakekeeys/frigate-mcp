@@ -31,39 +31,22 @@ def register_camera_tools(mcp: Any, client: Any) -> None:
         }
 
     @mcp.tool()
-    async def get_ptz_info(
+    async def get_camera_label_best(
         camera: Annotated[str, Field(description="Camera name")],
+        label: Annotated[str, Field(description="Object label (person, car, dog, etc.)")],
+        height: Annotated[int | None, Field(default=None, description="Resize image to this height in pixels")] = None,
     ) -> dict[str, Any]:
-        """Get PTZ (Pan-Tilt-Zoom) capabilities and presets for a camera.
+        """Get the most recent 'best' thumbnail for a camera + label combo.
 
-        Only works for cameras with PTZ support configured.
+        Frigate keeps a rolling best snapshot per (camera, label). Useful for
+        a quick "what's the latest person seen on the front door?" query.
         """
-        info = await client.get_ptz_info(camera)
-        return {"success": True, "camera": camera, "ptz_info": info}
-
-    @mcp.tool()
-    async def ptz_command(
-        camera: Annotated[str, Field(description="Camera name")],
-        action: Annotated[str, Field(description="PTZ action: 'move', 'zoom', 'preset', 'stop'")],
-        pan: Annotated[float | None, Field(default=None, description="Pan speed/amount (-1 to 1)")] = None,
-        tilt: Annotated[float | None, Field(default=None, description="Tilt speed/amount (-1 to 1)")] = None,
-        zoom: Annotated[float | None, Field(default=None, description="Zoom speed/amount (-1 to 1)")] = None,
-        preset: Annotated[str | None, Field(default=None, description="Preset name to move to")] = None,
-    ) -> dict[str, Any]:
-        """Send a PTZ command to a camera.
-
-        Actions:
-        - 'move': Move with pan/tilt values
-        - 'zoom': Zoom with zoom value
-        - 'preset': Go to a named preset
-        - 'stop': Stop current PTZ movement
-        """
-        result = await client.ptz_command(
-            camera,
-            action,
-            pan=pan,
-            tilt=tilt,
-            zoom=zoom,
-            preset=preset,
-        )
-        return {"success": True, "result": result}
+        image_bytes = await client.get_camera_label_best(camera, label, height=height)
+        b64 = base64.b64encode(image_bytes).decode("ascii")
+        return {
+            "success": True,
+            "camera": camera,
+            "label": label,
+            "image_base64": b64,
+            "content_type": "image/jpeg",
+        }

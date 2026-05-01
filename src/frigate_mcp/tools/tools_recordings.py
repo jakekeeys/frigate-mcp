@@ -31,3 +31,31 @@ def register_recording_tools(mcp: Any, client: Any) -> None:
         """
         storage = await client.get_recording_storage()
         return {"success": True, "storage": storage}
+
+    @mcp.tool()
+    async def get_recordings(
+        camera: Annotated[str, Field(description="Camera name")],
+        after: Annotated[float | None, Field(default=None, description="Start Unix timestamp (default: 1h ago)")] = None,
+        before: Annotated[float | None, Field(default=None, description="End Unix timestamp (default: now)")] = None,
+    ) -> dict[str, Any]:
+        """List recording segments for a camera in a time range."""
+        recordings = await client.get_recordings(camera, after=after, before=before)
+        return {
+            "success": True,
+            "camera": camera,
+            "count": len(recordings),
+            "recordings": recordings,
+        }
+
+    @mcp.tool()
+    async def get_recordings_unavailable(
+        cameras: Annotated[str | None, Field(default=None, description="Comma-separated camera names (or 'all')")] = None,
+        after: Annotated[float | None, Field(default=None, description="Start Unix timestamp (default: 1h ago)")] = None,
+        before: Annotated[float | None, Field(default=None, description="End Unix timestamp (default: now)")] = None,
+        scale: Annotated[int | None, Field(default=None, description="Bucket size in seconds")] = None,
+    ) -> dict[str, Any]:
+        """Get time ranges where no recordings are available (gaps)."""
+        gaps = await client.get_recordings_unavailable(
+            cameras=cameras, after=after, before=before, scale=scale
+        )
+        return {"success": True, "gaps": gaps}

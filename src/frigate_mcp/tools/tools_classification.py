@@ -1,4 +1,4 @@
-"""Object classification tools for Frigate (faces, license plates)."""
+"""Classification tools for Frigate (faces, license plates) and event media."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic import Field
 
 
 def register_classification_tools(mcp: Any, client: Any) -> None:
-    """Register Frigate object classification tools."""
+    """Register Frigate classification + event-media tools."""
 
     # ------------------------------------------------------------------ #
     # Faces
@@ -17,82 +17,85 @@ def register_classification_tools(mcp: Any, client: Any) -> None:
 
     @mcp.tool()
     async def get_faces() -> dict[str, Any]:
-        """Get all known face names and their face count.
+        """Get all registered face names and their image filenames.
 
-        Returns a dictionary mapping person names to their number of
-        stored face images.
+        Returns a dictionary mapping each person name to a list of stored
+        image filenames in their face folder.
         """
         faces = await client.get_faces()
         return {"success": True, "faces": faces}
 
     @mcp.tool()
-    async def get_faces_by_name(
-        name: Annotated[str, Field(description="Person name")],
+    async def create_face_folder(
+        name: Annotated[str, Field(description="Person name (folder will be created for their face images)")],
     ) -> dict[str, Any]:
-        """Get stored face images for a specific person."""
-        faces = await client.get_faces_by_name(name)
-        return {"success": True, "name": name, "faces": faces}
+        """Create a face folder for a new person.
+
+        Frigate face recognition must be enabled. After creation, training
+        images can be added by uploading them to Frigate's UI (multipart
+        upload — not exposed by this MCP server).
+        """
+        result = await client.create_face_folder(name)
+        return {"success": True, "result": result}
 
     @mcp.tool()
-    async def delete_face(
+    async def delete_face_images(
         name: Annotated[str, Field(description="Person name")],
-        face_id: Annotated[str, Field(description="Face image ID to delete")],
+        image_ids: Annotated[list[str], Field(description="List of image filenames to delete from this person's folder")],
     ) -> dict[str, Any]:
-        """Delete a stored face image for a person."""
-        result = await client.delete_face(name, face_id)
+        """Delete one or more stored face images for a person.
+
+        Deleting all images for a name effectively removes the person.
+        """
+        result = await client.delete_face_images(name, image_ids)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def rename_face(
+        old_name: Annotated[str, Field(description="Existing person name to rename")],
+        new_name: Annotated[str, Field(description="New name for the person")],
+    ) -> dict[str, Any]:
+        """Rename a registered face."""
+        result = await client.rename_face(old_name, new_name)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def reprocess_face(
+        training_file: Annotated[str, Field(description="Filename of a training image in Frigate's faces/train directory")],
+    ) -> dict[str, Any]:
+        """Reprocess a face training image to update predictions."""
+        result = await client.reprocess_face(training_file)
         return {"success": True, "result": result}
 
     # ------------------------------------------------------------------ #
-    # License Plates
+    # License plate recognition
     # ------------------------------------------------------------------ #
 
     @mcp.tool()
-    async def get_license_plates() -> dict[str, Any]:
-        """Get all known license plates and their associated names."""
-        plates = await client.get_license_plates()
+    async def get_recognized_license_plates(
+        split_joined: Annotated[int | None, Field(default=None, description="If 1, split joined plates (e.g. 'ABC123,XYZ789') into separate entries")] = None,
+    ) -> dict[str, Any]:
+        """List all recognized license plates that have appeared in events."""
+        plates = await client.get_recognized_license_plates(split_joined=split_joined)
         return {"success": True, "license_plates": plates}
 
     @mcp.tool()
-    async def get_license_plates_by_name(
-        name: Annotated[str, Field(description="Known name for the plate owner")],
+    async def reprocess_event_license_plate(
+        event_id: Annotated[str, Field(description="Event ID to re-run LPR on")],
     ) -> dict[str, Any]:
-        """Get license plates associated with a specific name."""
-        plates = await client.get_license_plates_by_name(name)
-        return {"success": True, "name": name, "license_plates": plates}
-
-    @mcp.tool()
-    async def create_license_plate(
-        plate: Annotated[str, Field(description="License plate number/text")],
-        known_name: Annotated[str, Field(description="Name to associate with this plate")],
-    ) -> dict[str, Any]:
-        """Register a known license plate with a name.
-
-        When Frigate detects this plate, it will be associated with the
-        given name for easier identification.
-        """
-        result = await client.create_license_plate(plate, known_name)
-        return {"success": True, "result": result}
-
-    @mcp.tool()
-    async def delete_license_plate(
-        plate: Annotated[str, Field(description="License plate number/text to delete")],
-    ) -> dict[str, Any]:
-        """Delete a known license plate entry."""
-        result = await client.delete_license_plate(plate)
+        """Re-run license plate recognition on an event's snapshot."""
+        result = await client.reprocess_event_license_plate(event_id)
         return {"success": True, "result": result}
 
     # ------------------------------------------------------------------ #
-    # Media helpers
+    # Event media (thumbnail / snapshot)
     # ------------------------------------------------------------------ #
 
     @mcp.tool()
     async def get_event_thumbnail(
         event_id: Annotated[str, Field(description="Event ID")],
     ) -> dict[str, Any]:
-        """Get the thumbnail image for an event.
-
-        Returns the thumbnail as a base64-encoded JPEG.
-        """
+        """Get the thumbnail image for an event as base64-encoded JPEG."""
         image_bytes = await client.get_thumbnail(event_id)
         b64 = base64.b64encode(image_bytes).decode("ascii")
         return {
@@ -108,11 +111,7 @@ def register_classification_tools(mcp: Any, client: Any) -> None:
         crop: Annotated[bool | None, Field(default=None, description="Crop to the detected object region")] = None,
         quality: Annotated[int | None, Field(default=None, description="JPEG quality (1-100)")] = None,
     ) -> dict[str, Any]:
-        """Get the snapshot image for an event.
-
-        Returns the snapshot as a base64-encoded JPEG. Optionally crop
-        to the detected object or adjust quality.
-        """
+        """Get the snapshot image for an event as base64-encoded JPEG."""
         image_bytes = await client.get_snapshot(
             event_id, crop=crop, quality=quality
         )
