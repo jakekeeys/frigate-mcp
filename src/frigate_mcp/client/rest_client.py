@@ -24,10 +24,15 @@ class FrigateConnectionError(Exception):
     """Raised when we cannot connect to Frigate."""
 
 
+def _flag(value: bool | None) -> int | None:
+    """Encode boolean filters using Frigate 0.18's integer flags."""
+    return None if value is None else int(value)
+
+
 class FrigateClient:
     """Async HTTP client for the Frigate NVR API.
 
-    All endpoints are based on Frigate v0.17.x. Endpoints requiring multipart
+    Endpoints target Frigate v0.18.x. Endpoints requiring multipart
     file uploads (e.g. face register/recognize) are intentionally not exposed —
     this client is JSON/binary-read-only by design.
     """
@@ -220,11 +225,11 @@ class FrigateClient:
             "zones": zones,
             "after": after,
             "before": before,
-            "has_clip": has_clip,
-            "has_snapshot": has_snapshot,
-            "in_progress": in_progress,
-            "include_thumbnails": include_thumbnails,
-            "favorites": favorites,
+            "has_clip": _flag(has_clip),
+            "has_snapshot": _flag(has_snapshot),
+            "in_progress": _flag(in_progress),
+            "include_thumbnails": _flag(include_thumbnails),
+            "favorites": _flag(favorites),
             "limit": limit,
             "sort": sort,
             "timezone": timezone,
@@ -266,7 +271,7 @@ class FrigateClient:
             "zones": zones,
             "after": after,
             "before": before,
-            "include_thumbnails": include_thumbnails,
+            "include_thumbnails": _flag(include_thumbnails),
             "limit": limit,
             "search_type": search_type,
         }.items():
@@ -285,9 +290,9 @@ class FrigateClient:
         if timezone:
             params["timezone"] = timezone
         if has_clip is not None:
-            params["has_clip"] = has_clip
+            params["has_clip"] = _flag(has_clip)
         if has_snapshot is not None:
-            params["has_snapshot"] = has_snapshot
+            params["has_snapshot"] = _flag(has_snapshot)
         return await self._request("GET", "/api/events/summary", params=params)
 
     async def delete_event(self, event_id: str) -> dict[str, Any]:
@@ -398,7 +403,10 @@ class FrigateClient:
         )
 
     async def end_event(self, event_id: str) -> dict[str, Any]:
-        return await self._request("PUT", f"/api/events/{event_id}/end")
+        # Frigate 0.18 requires the (possibly empty) EventsEndBody.
+        return await self._request(
+            "PUT", f"/api/events/{event_id}/end", json_body={}
+        )
 
     async def mark_event_as_false_positive(
         self, event_id: str
@@ -418,15 +426,40 @@ class FrigateClient:
         return resp.content
 
     async def get_snapshot(
-        self, event_id: str, *, crop: bool | None = None, quality: int | None = None
+        self,
+        event_id: str,
+        *,
+        crop: bool | None = None,
+        quality: int | None = None,
+        timestamp: int | None = None,
+        bbox: bool | None = None,
+        height: int | None = None,
     ) -> bytes:
         params: dict[str, Any] = {}
         if crop is not None:
-            params["crop"] = 1 if crop else 0
-        if quality is not None:
-            params["quality"] = quality
+            params["crop"] = _flag(crop)
+        for key, value in {
+            "quality": quality,
+            "timestamp": timestamp,
+            "bbox": _flag(bbox),
+            "height": height,
+        }.items():
+            if value is not None:
+                params[key] = value
         resp = await self._request(
             "GET", f"/api/events/{event_id}/snapshot.jpg", params=params, raw=True
+        )
+        return resp.content
+
+    async def get_clean_snapshot(
+        self, event_id: str, *, download: bool = False
+    ) -> bytes:
+        """Get Frigate 0.18's clean, unannotated WebP snapshot."""
+        resp = await self._request(
+            "GET",
+            f"/api/events/{event_id}/snapshot-clean.webp",
+            params={"download": download},
+            raw=True,
         )
         return resp.content
 
@@ -669,8 +702,25 @@ class FrigateClient:
     # Exports
     # ------------------------------------------------------------------ #
 
-    async def get_exports(self) -> list[dict[str, Any]]:
-        return await self._request("GET", "/api/exports")
+    async def get_exports(
+        self,
+        *,
+        export_case_id: str | None = None,
+        cameras: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List exports using Frigate 0.18's optional filters."""
+        params: dict[str, Any] = {}
+        for key, value in {
+            "export_case_id": export_case_id,
+            "cameras": cameras,
+            "start_date": start_date,
+            "end_date": end_date,
+        }.items():
+            if value is not None:
+                params[key] = value
+        return await self._request("GET", "/api/exports", params=params)
 
     async def get_export(self, export_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/api/exports/{export_id}")
@@ -681,20 +731,23 @@ class FrigateClient:
         start: float,
         end: float,
         *,
-        playback: str | None = None,
         source: str | None = None,
         name: str | None = None,
         image_path: str | None = None,
+        export_case_id: str | None = None,
+        chapters: str | None = None,
     ) -> dict[str, Any]:
+        """Queue a Frigate 0.18 recording export."""
         body: dict[str, Any] = {}
-        if playback is not None:
-            body["playback"] = playback
-        if source is not None:
-            body["source"] = source
-        if name is not None:
-            body["name"] = name
-        if image_path is not None:
-            body["image_path"] = image_path
+        for key, value in {
+            "source": source,
+            "name": name,
+            "image_path": image_path,
+            "export_case_id": export_case_id,
+            "chapters": chapters,
+        }.items():
+            if value is not None:
+                body[key] = value
         return await self._request(
             "POST",
             f"/api/export/{camera}/start/{start}/end/{end}",
@@ -702,7 +755,10 @@ class FrigateClient:
         )
 
     async def delete_export(self, export_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/api/export/{export_id}")
+        """Delete one export through Frigate 0.18's bulk-delete endpoint."""
+        return await self._request(
+            "POST", "/api/exports/delete", json_body={"ids": [export_id]}
+        )
 
     async def rename_export(
         self, export_id: str, name: str

@@ -109,12 +109,18 @@ def register_event_tools(mcp: Any, client: Any) -> None:
     @mcp.tool()
     async def get_event_summary(
         timezone: Annotated[str | None, Field(default=None, description="IANA timezone for grouping (e.g. 'America/New_York')")] = None,
+        has_clip: Annotated[bool | None, Field(default=None, description="Only include events with a video clip")] = None,
+        has_snapshot: Annotated[bool | None, Field(default=None, description="Only include events with a snapshot")] = None,
     ) -> dict[str, Any]:
         """Get a summary of events grouped by label, camera, and day.
 
         Useful for understanding detection patterns over time.
         """
-        summary = await client.get_event_summary(timezone=timezone)
+        summary = await client.get_event_summary(
+            timezone=timezone,
+            has_clip=has_clip,
+            has_snapshot=has_snapshot,
+        )
         return {"success": True, "summary": summary}
 
     @mcp.tool()

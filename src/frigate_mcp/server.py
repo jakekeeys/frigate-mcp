@@ -21,6 +21,7 @@ object detection for IP cameras.  You can use the tools provided to:
 - Query system status, configuration and statistics
 - Search and browse detected events (people, cars, animals, etc.)
 - View camera snapshots and event thumbnails
+- View clean, unannotated WebP snapshots from Frigate 0.18
 - Manage the review queue (mark items as reviewed) and ask GenAI to summarise it
 - Manage video exports
 - Manage registered faces and view recognised license plates

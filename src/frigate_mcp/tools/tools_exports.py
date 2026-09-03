@@ -30,16 +30,25 @@ def register_export_tools(mcp: Any, client: Any) -> None:
         start: Annotated[float, Field(description="Start Unix timestamp")],
         end: Annotated[float, Field(description="End Unix timestamp")],
         name: Annotated[str | None, Field(default=None, description="Optional friendly name for the export")] = None,
-        playback: Annotated[str | None, Field(default=None, description="Playback factor: 'realtime' (default), 'timelapse_25x', etc.")] = None,
         source: Annotated[str | None, Field(default=None, description="Source: 'recordings' (default) or 'preview'")] = None,
+        export_case_id: Annotated[str | None, Field(default=None, description="Optional Frigate export case ID")] = None,
+        chapters: Annotated[str | None, Field(default=None, description="Optional chapter mode (for example 'review_items')")] = None,
     ) -> dict[str, Any]:
         """Create a new video export from recorded footage.
 
         Exports a section of recorded video between the start and end
-        timestamps for the specified camera.
+        timestamps for the specified camera. Frigate 0.18 removed the old
+        playback-factor field; use a custom export when custom FFmpeg arguments
+        are required.
         """
         result = await client.create_export(
-            camera, start, end, name=name, playback=playback, source=source
+            camera,
+            start,
+            end,
+            name=name,
+            source=source,
+            export_case_id=export_case_id,
+            chapters=chapters,
         )
         return {"success": True, "result": result}
 

@@ -6,7 +6,7 @@ Control and query your Frigate NVR instance through AI assistants like Claude De
 
 ## Features
 
-**59 tools** across 8 categories, mapped 1:1 to Frigate's v0.17.x HTTP API:
+**60 tools** across 8 categories, mapped to Frigate's v0.18.x HTTP API:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
@@ -17,9 +17,18 @@ Control and query your Frigate NVR instance through AI assistants like Claude De
 | **Review** | 11 | List, by-id, by-event, by-ids, summary, mark/unmark viewed, delete, motion activity, AI summary |
 | **Exports** | 5 | List, get, create, delete, rename |
 | **Labels** | 4 | Labels, sub-labels, timeline, hourly timeline |
-| **Classification** | 8 | Faces CRUD (folder/delete/rename/reprocess/list), recognized plates, LPR reprocess, event thumbnail/snapshot |
+| **Classification** | 9 | Faces CRUD (folder/delete/rename/reprocess/list), recognized plates, LPR reprocess, event thumbnail/snapshot, clean WebP snapshots |
 
 PTZ camera control is **not** included — Frigate exposes PTZ over MQTT, not HTTP.
+
+## Frigate 0.18 compatibility
+
+The client targets Frigate 0.18.x. It encodes the integer (`0`/`1`) event
+filter flags required by the 0.18 API, sends the required empty body when
+ending an event, and uses the new bulk export-delete endpoint. Export creation
+uses the 0.18 fields (`source`, `name`, `image_path`, `export_case_id`, and
+`chapters`); the removed `playback` field is no longer accepted. Frigate 0.18
+stores clean snapshots as WebP, exposed here as `get_event_clean_snapshot`.
 
 ## Quick Start
 
