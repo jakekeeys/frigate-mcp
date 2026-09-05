@@ -84,7 +84,8 @@ def register_event_tools(mcp: Any, client: Any) -> None:
         after: Annotated[float | None, Field(default=None, description="Only events after this Unix timestamp")] = None,
         before: Annotated[float | None, Field(default=None, description="Only events before this Unix timestamp")] = None,
         limit: Annotated[int | None, Field(default=None, description="Max results to return")] = None,
-        search_type: Annotated[str | None, Field(default=None, description="Search type: 'similarity' or 'text'")] = None,
+        search_type: Annotated[str | None, Field(default=None, description="'thumbnail' (default), 'description', 'thumbnail,description', or 'similarity' (requires event_id; query is ignored)")] = None,
+        event_id: Annotated[str | None, Field(default=None, description="Reference event ID for search_type='similarity'")] = None,
     ) -> dict[str, Any]:
         """Search events using natural language / semantic search.
 
@@ -103,6 +104,7 @@ def register_event_tools(mcp: Any, client: Any) -> None:
             before=before,
             limit=limit,
             search_type=search_type,
+            event_id=event_id,
         )
         return {"success": True, "count": len(events), "events": events}
 
@@ -215,9 +217,10 @@ def register_event_tools(mcp: Any, client: Any) -> None:
     @mcp.tool()
     async def end_event(
         event_id: Annotated[str, Field(description="Event ID to end")],
+        end_time: Annotated[float | None, Field(default=None, description="Unix timestamp to end at (default: now)")] = None,
     ) -> dict[str, Any]:
         """End an in-progress event that was manually created."""
-        result = await client.end_event(event_id)
+        result = await client.end_event(event_id, end_time=end_time)
         return {"success": True, "result": result}
 
     @mcp.tool()
@@ -226,4 +229,61 @@ def register_event_tools(mcp: Any, client: Any) -> None:
     ) -> dict[str, Any]:
         """Mark an event as a false positive detection."""
         result = await client.mark_event_as_false_positive(event_id)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def delete_events(
+        event_ids: Annotated[list[str], Field(description="Event IDs to delete")],
+    ) -> dict[str, Any]:
+        """Bulk delete events and their media. Returns deleted and not-found IDs."""
+        result = await client.delete_events(event_ids)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def get_triggers_status(
+        camera: Annotated[str, Field(description="Camera name")],
+    ) -> dict[str, Any]:
+        """Get last-triggered time and triggering event for each semantic-search trigger on a camera."""
+        result = await client.get_triggers_status(camera)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def create_trigger_embedding(
+        camera: Annotated[str, Field(description="Camera name")],
+        name: Annotated[str, Field(description="Trigger name (must match a trigger in the camera's semantic_search.triggers config)")],
+        trigger_type: Annotated[str, Field(description="'description' (data is text) or 'thumbnail' (data is an event ID)")],
+        data: Annotated[str, Field(description="Description text or event ID, per trigger_type")],
+        threshold: Annotated[float | None, Field(default=None, description="Similarity threshold 0-1 (default 0.5)")] = None,
+    ) -> dict[str, Any]:
+        """Create the embedding for a semantic-search trigger. Fails if one already exists.
+
+        Requires semantic search. The trigger definition itself lives in config
+        (use set_config); this only stores what it matches against.
+        """
+        result = await client.create_trigger_embedding(
+            camera, name, trigger_type=trigger_type, data=data, threshold=threshold
+        )
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def update_trigger_embedding(
+        camera: Annotated[str, Field(description="Camera name")],
+        name: Annotated[str, Field(description="Trigger name")],
+        trigger_type: Annotated[str, Field(description="'description' or 'thumbnail'")],
+        data: Annotated[str, Field(description="Description text or event ID, per trigger_type")],
+        threshold: Annotated[float | None, Field(default=None, description="Similarity threshold 0-1")] = None,
+    ) -> dict[str, Any]:
+        """Replace the embedding for an existing semantic-search trigger."""
+        result = await client.update_trigger_embedding(
+            camera, name, trigger_type=trigger_type, data=data, threshold=threshold
+        )
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def delete_trigger_embedding(
+        camera: Annotated[str, Field(description="Camera name")],
+        name: Annotated[str, Field(description="Trigger name")],
+    ) -> dict[str, Any]:
+        """Delete a semantic-search trigger's embedding."""
+        result = await client.delete_trigger_embedding(camera, name)
         return {"success": True, "result": result}

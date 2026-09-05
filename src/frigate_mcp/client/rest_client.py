@@ -12,6 +12,11 @@ from frigate_mcp.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+def _flag(val: bool | None) -> int | None:
+    """Frigate types boolean query flags as Optional[int]; httpx would send 'true'."""
+    return None if val is None else int(val)
+
+
 class FrigateAPIError(Exception):
     """Raised when a Frigate API call fails."""
 
@@ -27,7 +32,7 @@ class FrigateConnectionError(Exception):
 class FrigateClient:
     """Async HTTP client for the Frigate NVR API.
 
-    All endpoints are based on Frigate v0.17.x. Endpoints requiring multipart
+    All endpoints are verified against Frigate v0.17.2. Endpoints requiring multipart
     file uploads (e.g. face register/recognize) are intentionally not exposed —
     this client is JSON/binary-read-only by design.
     """
@@ -159,10 +164,23 @@ class FrigateClient:
     async def restart(self) -> dict[str, Any]:
         return await self._request("POST", "/api/restart")
 
-    async def get_logs(self, service: str = "frigate") -> str:
-        """Get logs. service can be: frigate, go2rtc, nginx."""
-        resp = await self._request("GET", f"/api/logs/{service}", raw=True)
-        return resp.text
+    async def get_logs(
+        self,
+        service: str = "frigate",
+        *,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> dict[str, Any]:
+        """Get logs. service can be: frigate, go2rtc, nginx.
+
+        Returns {"totalLines": int, "lines": [...]}; start/end are line offsets.
+        """
+        params: dict[str, Any] = {}
+        if start is not None:
+            params["start"] = start
+        if end is not None:
+            params["end"] = end
+        return await self._request("GET", f"/api/logs/{service}", params=params)
 
     async def get_plus_models(
         self, *, filter_by_current_model_detector: bool = False
@@ -178,6 +196,23 @@ class FrigateClient:
             params["split_joined"] = split_joined
         return await self._request(
             "GET", "/api/recognized_license_plates", params=params
+        )
+
+    async def get_config_raw(self) -> str:
+        """Raw config file contents (YAML text)."""
+        return await self._request("GET", "/api/config/raw")
+
+    async def set_config(
+        self, config_data: dict[str, Any], *, requires_restart: bool = True
+    ) -> dict[str, Any]:
+        """Partial config update; nested dict is flattened + merged server-side."""
+        return await self._request(
+            "PUT",
+            "/api/config/set",
+            json_body={
+                "config_data": config_data,
+                "requires_restart": int(requires_restart),
+            },
         )
 
     # ------------------------------------------------------------------ #
@@ -220,11 +255,11 @@ class FrigateClient:
             "zones": zones,
             "after": after,
             "before": before,
-            "has_clip": has_clip,
-            "has_snapshot": has_snapshot,
-            "in_progress": in_progress,
-            "include_thumbnails": include_thumbnails,
-            "favorites": favorites,
+            "has_clip": _flag(has_clip),
+            "has_snapshot": _flag(has_snapshot),
+            "in_progress": _flag(in_progress),
+            "include_thumbnails": _flag(include_thumbnails),
+            "favorites": _flag(favorites),
             "limit": limit,
             "sort": sort,
             "timezone": timezone,
@@ -258,6 +293,7 @@ class FrigateClient:
         include_thumbnails: bool | None = None,
         limit: int | None = None,
         search_type: str | None = None,
+        event_id: str | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"query": query}
         for key, val in {
@@ -266,9 +302,10 @@ class FrigateClient:
             "zones": zones,
             "after": after,
             "before": before,
-            "include_thumbnails": include_thumbnails,
+            "include_thumbnails": _flag(include_thumbnails),
             "limit": limit,
             "search_type": search_type,
+            "event_id": event_id,
         }.items():
             if val is not None:
                 params[key] = val
@@ -285,9 +322,9 @@ class FrigateClient:
         if timezone:
             params["timezone"] = timezone
         if has_clip is not None:
-            params["has_clip"] = has_clip
+            params["has_clip"] = _flag(has_clip)
         if has_snapshot is not None:
-            params["has_snapshot"] = has_snapshot
+            params["has_snapshot"] = _flag(has_snapshot)
         return await self._request("GET", "/api/events/summary", params=params)
 
     async def delete_event(self, event_id: str) -> dict[str, Any]:
@@ -397,14 +434,68 @@ class FrigateClient:
             "POST", f"/api/events/{camera}/{label}/create", json_body=body
         )
 
-    async def end_event(self, event_id: str) -> dict[str, Any]:
-        return await self._request("PUT", f"/api/events/{event_id}/end")
+    async def end_event(
+        self, event_id: str, *, end_time: float | None = None
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PUT", f"/api/events/{event_id}/end", json_body={"end_time": end_time}
+        )
 
     async def mark_event_as_false_positive(
         self, event_id: str
     ) -> dict[str, Any]:
         return await self._request(
             "PUT", f"/api/events/{event_id}/false_positive"
+        )
+
+    async def delete_events(self, event_ids: list[str]) -> dict[str, Any]:
+        return await self._request(
+            "DELETE", "/api/events/", json_body={"event_ids": event_ids}
+        )
+
+    async def get_triggers_status(self, camera: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/triggers/status/{camera}")
+
+    async def create_trigger_embedding(
+        self,
+        camera: str,
+        name: str,
+        *,
+        trigger_type: str,
+        data: str,
+        threshold: float | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"type": trigger_type, "data": data}
+        if threshold is not None:
+            body["threshold"] = threshold
+        return await self._request(
+            "POST",
+            "/api/trigger/embedding",
+            params={"camera_name": camera, "name": name},
+            json_body=body,
+        )
+
+    async def update_trigger_embedding(
+        self,
+        camera: str,
+        name: str,
+        *,
+        trigger_type: str,
+        data: str,
+        threshold: float | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"type": trigger_type, "data": data}
+        if threshold is not None:
+            body["threshold"] = threshold
+        return await self._request(
+            "PUT", f"/api/trigger/embedding/{camera}/{name}", json_body=body
+        )
+
+    async def delete_trigger_embedding(
+        self, camera: str, name: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE", f"/api/trigger/embedding/{camera}/{name}"
         )
 
     # ------------------------------------------------------------------ #
@@ -435,22 +526,51 @@ class FrigateClient:
     ) -> bytes:
         params: dict[str, Any] = {}
         if height is not None:
-            params["h"] = height
+            params["height"] = height
         resp = await self._request(
             "GET", f"/api/{camera}/latest.jpg", params=params, raw=True
         )
         return resp.content
 
-    async def get_camera_label_best(
-        self, camera: str, label: str, *, height: int | None = None
+    async def get_camera_label_best(self, camera: str, label: str) -> bytes:
+        resp = await self._request(
+            "GET", f"/api/{camera}/{label}/best.jpg", raw=True
+        )
+        return resp.content
+
+    async def get_event_preview_gif(self, event_id: str) -> bytes:
+        resp = await self._request(
+            "GET", f"/api/events/{event_id}/preview.gif", raw=True
+        )
+        return resp.content
+
+    async def get_event_clean_snapshot(self, event_id: str) -> bytes:
+        resp = await self._request(
+            "GET", f"/api/events/{event_id}/snapshot-clean.webp", raw=True
+        )
+        return resp.content
+
+    async def get_recording_snapshot(
+        self,
+        camera: str,
+        frame_time: float,
+        *,
+        fmt: str = "jpg",
+        height: int | None = None,
     ) -> bytes:
         params: dict[str, Any] = {}
         if height is not None:
-            params["h"] = height
+            params["height"] = height
         resp = await self._request(
-            "GET", f"/api/{camera}/{label}/best.jpg", params=params, raw=True
+            "GET",
+            f"/api/{camera}/recordings/{frame_time}/snapshot.{fmt}",
+            params=params,
+            raw=True,
         )
         return resp.content
+
+    async def get_ptz_info(self, camera: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/{camera}/ptz/info")
 
     # ------------------------------------------------------------------ #
     # Labels / Timeline
@@ -665,6 +785,16 @@ class FrigateClient:
             "GET", "/api/recordings/unavailable", params=params
         )
 
+    async def get_recording_days(
+        self, *, cameras: str | None = None, timezone: str | None = None
+    ) -> dict[str, bool]:
+        params: dict[str, Any] = {}
+        if cameras:
+            params["cameras"] = cameras
+        if timezone:
+            params["timezone"] = timezone
+        return await self._request("GET", "/api/recordings/summary", params=params)
+
     # ------------------------------------------------------------------ #
     # Exports
     # ------------------------------------------------------------------ #
@@ -754,3 +884,15 @@ class FrigateClient:
         return await self._request(
             "PUT", "/api/lpr/reprocess", params={"event_id": event_id}
         )
+
+    # ------------------------------------------------------------------ #
+    # Semantic search / audio
+    # ------------------------------------------------------------------ #
+
+    async def transcribe_event_audio(self, event_id: str) -> dict[str, Any]:
+        return await self._request(
+            "PUT", "/api/audio/transcribe", json_body={"event_id": event_id}
+        )
+
+    async def reindex_embeddings(self) -> dict[str, Any]:
+        return await self._request("PUT", "/api/reindex")

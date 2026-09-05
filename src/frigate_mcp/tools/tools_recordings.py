@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -59,3 +60,31 @@ def register_recording_tools(mcp: Any, client: Any) -> None:
             cameras=cameras, after=after, before=before, scale=scale
         )
         return {"success": True, "gaps": gaps}
+
+    @mcp.tool()
+    async def get_recording_days(
+        cameras: Annotated[str | None, Field(default=None, description="Comma-separated camera names (default all)")] = None,
+        timezone: Annotated[str | None, Field(default=None, description="IANA timezone")] = None,
+    ) -> dict[str, Any]:
+        """Get which days have any recordings across cameras (day -> true)."""
+        days = await client.get_recording_days(cameras=cameras, timezone=timezone)
+        return {"success": True, "days": days}
+
+    @mcp.tool()
+    async def get_recording_snapshot(
+        camera: Annotated[str, Field(description="Camera name")],
+        frame_time: Annotated[float, Field(description="Unix timestamp of the frame to extract")],
+        fmt: Annotated[str, Field(default="jpg", description="'jpg' or 'png'")] = "jpg",
+        height: Annotated[int | None, Field(default=None, description="Resize to this height in pixels")] = None,
+    ) -> dict[str, Any]:
+        """Extract a single frame from recorded footage at a timestamp, as base64."""
+        image_bytes = await client.get_recording_snapshot(
+            camera, frame_time, fmt=fmt, height=height
+        )
+        return {
+            "success": True,
+            "camera": camera,
+            "frame_time": frame_time,
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "content_type": "image/png" if fmt == "png" else "image/jpeg",
+        }

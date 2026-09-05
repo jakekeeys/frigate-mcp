@@ -84,10 +84,21 @@ def register_system_tools(mcp: Any, client: Any) -> None:
                 description="Log service to retrieve: 'frigate', 'go2rtc', or 'nginx'",
             ),
         ] = "frigate",
+        start: Annotated[int | None, Field(default=None, description="First line offset (default 0)")] = None,
+        end: Annotated[int | None, Field(default=None, description="Last line offset (default: end of log)")] = None,
     ) -> dict[str, Any]:
-        """Get recent log output from a Frigate service."""
-        logs = await client.get_logs(service)
-        return {"success": True, "service": service, "logs": logs}
+        """Get log lines from a Frigate service.
+
+        Returns total_lines plus the requested slice of lines. Frigate logs can
+        be large — pass start/end to page through them.
+        """
+        logs = await client.get_logs(service, start=start, end=end)
+        return {
+            "success": True,
+            "service": service,
+            "total_lines": logs.get("totalLines"),
+            "lines": logs.get("lines", []),
+        }
 
     @mcp.tool()
     async def restart_frigate() -> dict[str, Any]:
@@ -96,4 +107,23 @@ def register_system_tools(mcp: Any, client: Any) -> None:
         WARNING: This will briefly interrupt recording and detection.
         """
         result = await client.restart()
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def get_config_raw() -> dict[str, Any]:
+        """Get the raw Frigate config file as YAML text (as written on disk, not the resolved config)."""
+        raw = await client.get_config_raw()
+        return {"success": True, "config_yaml": raw}
+
+    @mcp.tool()
+    async def set_config(
+        config_data: Annotated[dict[str, Any], Field(description="Nested partial config to merge, e.g. {'cameras': {'front': {'detect': {'enabled': False}}}}")],
+        requires_restart: Annotated[bool, Field(default=True, description="False applies the change live where Frigate supports it")] = True,
+    ) -> dict[str, Any]:
+        """Merge a partial update into the Frigate config file.
+
+        Admin only. Frigate validates the result and rolls back on error.
+        Prefer this over save_config for small changes.
+        """
+        result = await client.set_config(config_data, requires_restart=requires_restart)
         return {"success": True, "result": result}

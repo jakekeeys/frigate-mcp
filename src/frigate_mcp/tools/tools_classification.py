@@ -122,3 +122,50 @@ def register_classification_tools(mcp: Any, client: Any) -> None:
             "image_base64": b64,
             "content_type": "image/jpeg",
         }
+
+    @mcp.tool()
+    async def get_event_preview_gif(
+        event_id: Annotated[str, Field(description="Event ID")],
+    ) -> dict[str, Any]:
+        """Get an animated GIF preview of an event (first 20s max) as base64."""
+        image_bytes = await client.get_event_preview_gif(event_id)
+        return {
+            "success": True,
+            "event_id": event_id,
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "content_type": "image/gif",
+        }
+
+    @mcp.tool()
+    async def get_event_clean_snapshot(
+        event_id: Annotated[str, Field(description="Event ID")],
+    ) -> dict[str, Any]:
+        """Get the clean (no bounding box / timestamp overlay) event snapshot as base64 WebP."""
+        image_bytes = await client.get_event_clean_snapshot(event_id)
+        return {
+            "success": True,
+            "event_id": event_id,
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "content_type": "image/webp",
+        }
+
+    # ------------------------------------------------------------------ #
+    # Semantic search / audio
+    # ------------------------------------------------------------------ #
+
+    @mcp.tool()
+    async def transcribe_event_audio(
+        event_id: Annotated[str, Field(description="Event ID of a speech event")],
+    ) -> dict[str, Any]:
+        """Start audio transcription for an event. Async: returns immediately; result lands on the event later.
+
+        Requires audio_transcription enabled on the event's camera.
+        """
+        result = await client.transcribe_event_audio(event_id)
+        return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def reindex_embeddings() -> dict[str, Any]:
+        """Rebuild all semantic-search embeddings for tracked objects. Long-running; errors if already in progress."""
+        result = await client.reindex_embeddings()
+        return {"success": True, "result": result}
