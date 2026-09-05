@@ -88,3 +88,14 @@ def register_recording_tools(mcp: Any, client: Any) -> None:
             "image_base64": base64.b64encode(image_bytes).decode("ascii"),
             "content_type": "image/png" if fmt == "png" else "image/jpeg",
         }
+
+    @mcp.tool()
+    async def delete_recordings(
+        start: Annotated[float, Field(description="Start Unix timestamp")],
+        end: Annotated[float, Field(description="End Unix timestamp (must be after start)")],
+        cameras: Annotated[str | None, Field(default=None, description="Comma-separated camera names (default all)")] = None,
+        keep: Annotated[str | None, Field(default=None, description="Comma-separated recording IDs to keep within the range")] = None,
+    ) -> dict[str, Any]:
+        """0.18+: Delete recording segments overlapping a time range. Irreversible."""
+        result = await client.delete_recordings(start, end, cameras=cameras, keep=keep)
+        return {"success": True, "result": result}

@@ -127,3 +127,15 @@ def register_system_tools(mcp: Any, client: Any) -> None:
         """
         result = await client.set_config(config_data, requires_restart=requires_restart)
         return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def get_profiles() -> dict[str, Any]:
+        """0.18+: List configured profiles (named config overrides) and which is active."""
+        result = await client.get_profiles()
+        return {"success": True, "profiles": result}
+
+    @mcp.tool()
+    async def get_active_profile() -> dict[str, Any]:
+        """0.18+: Get the active profile name (null if none). Switch with set_camera_feature(camera='*', feature='profile')."""
+        result = await client.get_active_profile()
+        return {"success": True, "result": result}

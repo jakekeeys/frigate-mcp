@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A FastMCP server that exposes the [Frigate NVR](https://frigate.video) HTTP API (v0.17.2) as MCP tools. 73 tools across 8 categories let an MCP client query events, view frames, manage exports/review queue, summarise review activity via GenAI, and manage registered faces. PTZ is intentionally **not** included — Frigate's PTZ control surface is MQTT-only, not HTTP.
+A FastMCP server that exposes the [Frigate NVR](https://frigate.video) HTTP API (v0.17.2 and v0.18) as MCP tools. 90 tools across 8 categories let an MCP client query events, view frames, manage exports/review queue, summarise review activity via GenAI, and manage registered faces. PTZ is intentionally **not** included — Frigate's PTZ control surface is MQTT-only, not HTTP.
 
 ## Common commands
 
@@ -51,6 +51,7 @@ The server is a thin async wrapper around Frigate's REST API. Three layers:
 
 - Python 3.11+, `from __future__ import annotations` everywhere, `str | None` unions over `Optional`.
 - Ruff config: line length 88 (E501 ignored), targets `E W F I B UP`.
-- README claims "73 tools across 8 categories" — keep this in sync if you add/remove tools.
-- Endpoints are **verified against the Frigate v0.17.2 source** (`github.com/blakeblackshear/frigate`, files under `frigate/api/`). When adding a tool, confirm the route exists in that release before writing the client method — avoid modeling endpoints from intuition. License plate CRUD, notifications list/mark-read, and `POST /api/{camera}/ptz` are common traps that look like they should exist but don't. Boolean query flags (`has_clip`, `favorites`, …) are typed `Optional[int]` upstream — pass through `_flag()` in the client, never a raw bool.
+- README claims "90 tools across 8 categories" — keep this in sync if you add/remove tools.
+- `FrigateClient.version_tuple()` caches the connected Frigate's (major, minor). The only 0.17→0.18 breaking route is export delete; `delete_export` branches on it. New 0.18-only tools are prefixed `0.18+:` in their docstrings and simply 404 on 0.17.
+- Endpoints are **verified against the Frigate v0.17.2 and v0.18.0-rc1 source** (`github.com/blakeblackshear/frigate`, files under `frigate/api/`). When adding a tool, confirm the route exists in that release before writing the client method — avoid modeling endpoints from intuition. License plate CRUD, notifications list/mark-read, and `POST /api/{camera}/ptz` are common traps that look like they should exist but don't. Boolean query flags (`has_clip`, `favorites`, …) are typed `Optional[int]` upstream — pass through `_flag()` in the client, never a raw bool.
 - Multipart uploads (face register/recognize, Frigate+ submit) are intentionally not exposed — this client is JSON/binary-read-only.

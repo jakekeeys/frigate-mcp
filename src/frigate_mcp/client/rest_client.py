@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -32,7 +33,9 @@ class FrigateConnectionError(Exception):
 class FrigateClient:
     """Async HTTP client for the Frigate NVR API.
 
-    All endpoints are verified against Frigate v0.17.2. Endpoints requiring multipart
+    Endpoints are verified against Frigate v0.17.2 and v0.18.0-rc1; 0.18-only
+    endpoints are marked. The one 0.18 breaking change (export delete) is gated
+    on the connected version. Endpoints requiring multipart
     file uploads (e.g. face register/recognize) are intentionally not exposed —
     this client is JSON/binary-read-only by design.
     """
@@ -47,6 +50,7 @@ class FrigateClient:
         self.timeout = timeout or settings.timeout
 
         self._client: httpx.AsyncClient | None = None
+        self._version: tuple[int, int] | None = None
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -123,6 +127,13 @@ class FrigateClient:
     async def get_version(self) -> str:
         resp = await self._request("GET", "/api/version")
         return resp if isinstance(resp, str) else str(resp)
+
+    async def version_tuple(self) -> tuple[int, int]:
+        """(major, minor) of the connected Frigate; fetched once and cached."""
+        if self._version is None:
+            m = re.match(r"(\d+)\.(\d+)", await self.get_version())
+            self._version = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+        return self._version
 
     async def get_stats(self) -> dict[str, Any]:
         return await self._request("GET", "/api/stats")
@@ -418,8 +429,11 @@ class FrigateClient:
         duration: int | None = None,
         include_recording: bool | None = None,
         draw: dict[str, Any] | None = None,
+        pre_capture: int | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {}
+        if pre_capture is not None:
+            body["pre_capture"] = pre_capture
         if sub_label is not None:
             body["sub_label"] = sub_label
         if score is not None:
@@ -509,13 +523,25 @@ class FrigateClient:
         return resp.content
 
     async def get_snapshot(
-        self, event_id: str, *, crop: bool | None = None, quality: int | None = None
+        self,
+        event_id: str,
+        *,
+        crop: bool | None = None,
+        quality: int | None = None,
+        height: int | None = None,
+        bbox: bool | None = None,
+        timestamp: bool | None = None,
     ) -> bytes:
         params: dict[str, Any] = {}
-        if crop is not None:
-            params["crop"] = 1 if crop else 0
-        if quality is not None:
-            params["quality"] = quality
+        for key, val in {
+            "crop": _flag(crop),
+            "quality": quality,
+            "height": height,
+            "bbox": _flag(bbox),
+            "timestamp": _flag(timestamp),
+        }.items():
+            if val is not None:
+                params[key] = val
         resp = await self._request(
             "GET", f"/api/events/{event_id}/snapshot.jpg", params=params, raw=True
         )
@@ -799,8 +825,24 @@ class FrigateClient:
     # Exports
     # ------------------------------------------------------------------ #
 
-    async def get_exports(self) -> list[dict[str, Any]]:
-        return await self._request("GET", "/api/exports")
+    async def get_exports(
+        self,
+        *,
+        export_case_id: str | None = None,
+        cameras: str | None = None,
+        start_date: float | None = None,
+        end_date: float | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {}
+        for key, val in {
+            "export_case_id": export_case_id,
+            "cameras": cameras,
+            "start_date": start_date,
+            "end_date": end_date,
+        }.items():
+            if val is not None:
+                params[key] = val
+        return await self._request("GET", "/api/exports", params=params)
 
     async def get_export(self, export_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/api/exports/{export_id}")
@@ -815,8 +857,14 @@ class FrigateClient:
         source: str | None = None,
         name: str | None = None,
         image_path: str | None = None,
+        chapters: str | None = None,
+        export_case_id: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {}
+        if chapters is not None:
+            body["chapters"] = chapters
+        if export_case_id is not None:
+            body["export_case_id"] = export_case_id
         if playback is not None:
             body["playback"] = playback
         if source is not None:
@@ -832,7 +880,111 @@ class FrigateClient:
         )
 
     async def delete_export(self, export_id: str) -> dict[str, Any]:
+        # 0.18 removed DELETE /export/{id} in favour of bulk POST /exports/delete.
+        if await self.version_tuple() >= (0, 18):
+            return await self.delete_exports([export_id])
         return await self._request("DELETE", f"/api/export/{export_id}")
+
+    # ---- Frigate 0.18+ export endpoints ----
+
+    async def delete_exports(self, export_ids: list[str]) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/api/exports/delete", json_body={"ids": export_ids}
+        )
+
+    async def reassign_exports(
+        self, export_ids: list[str], export_case_id: str | None
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/exports/reassign",
+            json_body={"ids": export_ids, "export_case_id": export_case_id},
+        )
+
+    async def create_exports_batch(
+        self,
+        items: list[dict[str, Any]],
+        *,
+        export_case_id: str | None = None,
+        new_case_name: str | None = None,
+        new_case_description: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"items": items}
+        for key, val in {
+            "export_case_id": export_case_id,
+            "new_case_name": new_case_name,
+            "new_case_description": new_case_description,
+        }.items():
+            if val is not None:
+                body[key] = val
+        return await self._request("POST", "/api/exports/batch", json_body=body)
+
+    async def create_custom_export(
+        self,
+        camera: str,
+        start: float,
+        end: float,
+        *,
+        name: str | None = None,
+        source: str | None = None,
+        ffmpeg_input_args: str | None = None,
+        ffmpeg_output_args: str | None = None,
+        cpu_fallback: bool | None = None,
+        export_case_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        for key, val in {
+            "name": name,
+            "source": source,
+            "ffmpeg_input_args": ffmpeg_input_args,
+            "ffmpeg_output_args": ffmpeg_output_args,
+            "cpu_fallback": cpu_fallback,
+            "export_case_id": export_case_id,
+        }.items():
+            if val is not None:
+                body[key] = val
+        return await self._request(
+            "POST",
+            f"/api/export/custom/{camera}/start/{start}/end/{end}",
+            json_body=body,
+        )
+
+    async def get_export_cases(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/api/cases")
+
+    async def get_export_case(self, case_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/cases/{case_id}")
+
+    async def create_export_case(
+        self, name: str, *, description: str | None = None
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        return await self._request("POST", "/api/cases", json_body=body)
+
+    async def update_export_case(
+        self,
+        case_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if description is not None:
+            body["description"] = description
+        return await self._request("PATCH", f"/api/cases/{case_id}", json_body=body)
+
+    async def delete_export_case(
+        self, case_id: str, *, delete_exports: bool = False
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE",
+            f"/api/cases/{case_id}",
+            params={"delete_exports": delete_exports},
+        )
 
     async def rename_export(
         self, export_id: str, name: str
@@ -841,6 +993,73 @@ class FrigateClient:
             "PATCH",
             f"/api/export/{export_id}/rename",
             json_body={"name": name},
+        )
+
+    # ------------------------------------------------------------------ #
+    # Frigate 0.18+: camera features, profiles, VLM monitor, recordings delete
+    # ------------------------------------------------------------------ #
+
+    async def set_camera_feature(
+        self,
+        camera: str,
+        feature: str,
+        value: str,
+        *,
+        sub_command: str | None = None,
+    ) -> dict[str, Any]:
+        path = f"/api/camera/{camera}/set/{feature}"
+        if sub_command is not None:
+            path += f"/{sub_command}"
+        return await self._request("PUT", path, json_body={"value": value})
+
+    async def get_profiles(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/profiles")
+
+    async def get_active_profile(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/profile/active")
+
+    async def get_audio_labels(self) -> list[str]:
+        return await self._request("GET", "/api/audio_labels")
+
+    async def start_vlm_monitor(
+        self,
+        camera: str,
+        condition: str,
+        *,
+        max_duration_minutes: int | None = None,
+        labels: list[str] | None = None,
+        zones: list[str] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"camera": camera, "condition": condition}
+        if max_duration_minutes is not None:
+            body["max_duration_minutes"] = max_duration_minutes
+        if labels is not None:
+            body["labels"] = labels
+        if zones is not None:
+            body["zones"] = zones
+        return await self._request("POST", "/api/vlm/monitor", json_body=body)
+
+    async def get_vlm_monitor(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/vlm/monitor")
+
+    async def cancel_vlm_monitor(self) -> dict[str, Any]:
+        return await self._request("DELETE", "/api/vlm/monitor")
+
+    async def delete_recordings(
+        self,
+        start: float,
+        end: float,
+        *,
+        cameras: str | None = None,
+        keep: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if cameras is not None:
+            params["cameras"] = cameras
+        if keep is not None:
+            params["keep"] = keep
+        return await self._request(
+            "DELETE", f"/api/recordings/start/{start}/end/{end}", params=params
         )
 
     # ------------------------------------------------------------------ #

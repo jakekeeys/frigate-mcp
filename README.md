@@ -6,17 +6,17 @@ Control and query your Frigate NVR instance through AI assistants like Claude De
 
 ## Features
 
-**73 tools** across 8 categories, mapped 1:1 to Frigate's v0.17.2 HTTP API:
+**90 tools** across 8 categories, mapped 1:1 to Frigate's HTTP API. Verified against v0.17.2 and v0.18.0-rc1; tools marked **0.18+** need Frigate 0.18, everything else works on both (the export-delete change is handled automatically):
 
 | Category | Tools | Description |
 |----------|-------|-------------|
-| **System** | 11 | Version, stats (+history), config (get/raw/set/save/schema), logs, restart, Frigate+ models |
+| **System** | 13 | Version, stats (+history), config (get/raw/set/save/schema), logs, restart, Frigate+ models, profiles (0.18+) |
 | **Events** | 21 | List, explore, by-id, search, summary, create/end/delete (single + bulk), retain, false-positive, sub-label, recognized plate, attributes, description, regenerate description, semantic-search trigger status + embedding CRUD |
-| **Cameras** | 3 | Latest frame, latest "best" thumbnail per camera + label, PTZ info (read-only) |
-| **Recordings** | 6 | Per-camera summary, days with recordings, storage, list segments, recording gaps, frame at timestamp |
+| **Cameras** | 7 | Latest frame, latest "best" thumbnail per camera + label, PTZ info (read-only), set camera feature (0.18+), VLM monitor start/get/cancel (0.18+) |
+| **Recordings** | 7 | Per-camera summary, days with recordings, storage, list segments, recording gaps, frame at timestamp, delete range (0.18+) |
 | **Review** | 10 | List, by-id, by-event, by-ids, summary, mark/unmark viewed, delete, motion activity, AI summary |
-| **Exports** | 5 | List, get, create, delete, rename |
-| **Labels** | 4 | Labels, sub-labels, timeline, hourly timeline |
+| **Exports** | 14 | List (filters), get, create, delete, rename, bulk delete/reassign/batch (0.18+), custom ffmpeg export (0.18+), export cases CRUD (0.18+) |
+| **Labels** | 5 | Labels, sub-labels, audio labels (0.18+), timeline, hourly timeline |
 | **Classification** | 13 | Faces CRUD (folder/delete/rename/reprocess/list), recognized plates, LPR reprocess, event thumbnail/snapshot/clean snapshot/preview GIF, audio transcription, embeddings reindex |
 
 PTZ camera *control* is **not** included — Frigate exposes PTZ over MQTT, not HTTP. Read-only PTZ info is.

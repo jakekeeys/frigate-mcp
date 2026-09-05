@@ -198,6 +198,7 @@ def register_event_tools(mcp: Any, client: Any) -> None:
         score: Annotated[float | None, Field(default=None, description="Detection score (0-1)")] = None,
         duration: Annotated[int | None, Field(default=None, description="Event duration in seconds (default 30)")] = None,
         include_recording: Annotated[bool | None, Field(default=None, description="Include recording clip (default true)")] = None,
+        pre_capture: Annotated[int | None, Field(default=None, description="0.18+: seconds of footage before creation to include")] = None,
     ) -> dict[str, Any]:
         """Manually create an event on a camera.
 
@@ -211,6 +212,7 @@ def register_event_tools(mcp: Any, client: Any) -> None:
             score=score,
             duration=duration,
             include_recording=include_recording,
+            pre_capture=pre_capture,
         )
         return {"success": True, "result": result}
 

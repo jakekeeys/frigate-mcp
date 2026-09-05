@@ -110,10 +110,17 @@ def register_classification_tools(mcp: Any, client: Any) -> None:
         event_id: Annotated[str, Field(description="Event ID")],
         crop: Annotated[bool | None, Field(default=None, description="Crop to the detected object region")] = None,
         quality: Annotated[int | None, Field(default=None, description="JPEG quality (1-100)")] = None,
+        height: Annotated[int | None, Field(default=None, description="Resize to this height in pixels")] = None,
+        bbox: Annotated[bool | None, Field(default=None, description="Draw the bounding box")] = None,
+        timestamp: Annotated[bool | None, Field(default=None, description="Draw the timestamp")] = None,
     ) -> dict[str, Any]:
-        """Get the snapshot image for an event as base64-encoded JPEG."""
+        """Get the snapshot image for an event as base64-encoded JPEG.
+
+        On Frigate 0.18+ the annotated JPEG is rendered on demand from the clean
+        snapshot; omitted options fall back to the camera's snapshots config.
+        """
         image_bytes = await client.get_snapshot(
-            event_id, crop=crop, quality=quality
+            event_id, crop=crop, quality=quality, height=height, bbox=bbox, timestamp=timestamp
         )
         b64 = base64.b64encode(image_bytes).decode("ascii")
         return {

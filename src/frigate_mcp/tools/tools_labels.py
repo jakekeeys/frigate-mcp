@@ -63,3 +63,9 @@ def register_label_tools(mcp: Any, client: Any) -> None:
             timezone=timezone,
         )
         return {"success": True, "timeline": result}
+
+    @mcp.tool()
+    async def get_audio_labels() -> dict[str, Any]:
+        """0.18+: Get all audio labels that have been detected (e.g. speech, bark, siren)."""
+        labels = await client.get_audio_labels()
+        return {"success": True, "audio_labels": labels}
