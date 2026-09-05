@@ -25,6 +25,8 @@ object detection for IP cameras.  You can use the tools provided to:
 - Manage video exports
 - Manage registered faces and view recognised license plates
 - View recordings, gaps, and motion activity
+- On Frigate 0.18+: toggle camera features (detect, record, snapshots, zones,
+  masks), switch profiles, group exports into cases, and run a VLM monitor
 
 Always prefer searching events by semantic description when the user asks
 about what happened ("was there a delivery?", "did anyone come to the door?").
