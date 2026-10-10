@@ -4,6 +4,33 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+_MISSING = object()
+_SENSITIVE = {"password", "passwd", "secret", "token", "api_key", "private_key", "username", "user", "rtsp", "input_args", "path"}
+
+
+def _config_field(config: dict[str, Any], field_path: str) -> Any:
+    """Read a simple dotted object path, refusing secrets and array indexing."""
+    parts = field_path.split(".")
+    if not parts or any(not p or p.startswith("_") or p.isdigit() for p in parts):
+        raise ValueError("Invalid config field path")
+    if any(p.lower() in _SENSITIVE or "password" in p.lower() or "secret" in p.lower() or "token" in p.lower() for p in parts):
+        raise ValueError("Sensitive configuration fields are not exposed by this tool")
+    node: Any = config
+    for part in parts:
+        if not isinstance(node, dict) or part not in node:
+            raise ValueError(f"Unknown config field: {field_path}")
+        node = node[part]
+    if isinstance(node, (dict, list)):
+        raise ValueError("Select an individual scalar field rather than a section or list")
+    return node
+
+
+def _nested_field(field_path: str, value: Any) -> dict[str, Any]:
+    node: Any = value
+    for part in reversed(field_path.split(".")):
+        node = {part: node}
+    return node
+
 from pydantic import Field
 
 
@@ -127,6 +154,60 @@ def register_system_tools(mcp: Any, client: Any) -> None:
         """
         result = await client.set_config(config_data, requires_restart=requires_restart)
         return {"success": True, "result": result}
+
+    @mcp.tool()
+    async def get_config_field(field_path: str) -> dict[str, Any]:
+        """Read one nonsensitive scalar using a dotted path, e.g. genai.model."""
+        current = await client.get_config()
+        value = _config_field(current, field_path)
+        return {"success": True, "field_path": field_path, "value": value}
+
+    @mcp.tool()
+    async def update_config_field(
+        field_path: str,
+        value: Any,
+        expected_value: Any,
+        dry_run: bool = True,
+        requires_restart: bool = True,
+    ) -> dict[str, Any]:
+        """Safely modify one nonsensitive scalar using Frigate's partial config API.
+
+        expected_value is mandatory and must equal the current resolved value.
+        dry_run defaults to True. A successful write may still need Frigate
+        restart; the tool does not restart or change other fields.
+        For sensitive fields use Frigate's authenticated config editor.
+        """
+        config = await client.get_config()
+        old_value = _config_field(config, field_path)
+        if old_value != expected_value or type(old_value) is not type(expected_value):
+            return {"success": False, "error": "config_conflict", "field_path": field_path,
+                    "message": "The existing value differs from expected_value; no changes made."}
+        if isinstance(value, (dict, list)) or value is None:
+            raise ValueError("Only non-null scalar values are supported")
+        if type(value) is not type(old_value):
+            raise ValueError("New value must have the same JSON type as the previous value")
+        if value == old_value:
+            return {"success": True, "changed": False, "field_path": field_path,
+                    "requires_restart": False}
+        result = {"success": True, "field_path": field_path, "old_value": old_value,
+                  "new_value": value, "dry_run": dry_run, "requires_restart": requires_restart}
+        if dry_run:
+            return result
+        # Frigate performs its own validation and restores the file on validation errors.
+        response = await client.set_config(_nested_field(field_path, value),
+                                           requires_restart=requires_restart)
+        if isinstance(response, dict) and response.get("success") is False:
+            return {**result, "success": False, "result": response}
+        result["result"] = response
+        # When restart is required, the running config remains stale until restart.
+        if not requires_restart:
+            result["verified_value"] = _config_field(await client.get_config(), field_path)
+            result["verified"] = result["verified_value"] == value
+            result["success"] = bool(result["verified"])
+        else:
+            result["verified"] = False
+            result["message"] = "Saved by Frigate. Restart required before runtime value can be verified."
+        return result
 
     @mcp.tool()
     async def get_profiles() -> dict[str, Any]:

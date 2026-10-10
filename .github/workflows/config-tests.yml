@@ -1,0 +1,19 @@
+name: Safe config field tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Test
+        run: python -m pytest -q tests/test_safe_config_field.py tests/test_client_params.py
